@@ -8,6 +8,16 @@
 <style>
 *{box-sizing:border-box}body{margin:0;padding:16px;background:#f6f3ff;color:#1f2937;font:15px/1.55 system-ui,"Noto Sans Thai",sans-serif}.shell{max-width:1050px;margin:auto}.head,.panel{background:#fff;border-radius:18px;padding:18px;box-shadow:0 10px 28px #3b17681c;margin-bottom:14px}.head{background:linear-gradient(120deg,#24103f,#5b21b6);color:white}.head h1{margin:0;font-size:22px}.head p{margin:5px 0 0;color:#e9ddff}.grid{display:grid;grid-template-columns:minmax(250px,1fr) minmax(260px,.8fr);gap:14px;align-items:start}.stage{position:relative;width:min(100%,470px);aspect-ratio:210/297;margin:0 auto;background:#111827;overflow:hidden;border-radius:16px}.stage video{width:100%;height:100%;object-fit:cover}.guide{position:absolute;inset:4%;border:2px dashed white;box-shadow:0 0 0 999px #11182738;pointer-events:none}.guide:before{content:'จัดกระดาษให้มาร์กเกอร์ทั้ง 4 มุมอยู่ในกรอบ';position:absolute;left:0;right:0;top:7px;text-align:center;color:#fff;font-size:12px;text-shadow:0 1px 5px #000}.controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.select,button{min-height:44px;border-radius:11px;padding:9px 12px;font:inherit}.select{flex:1;min-width:180px;border:1px solid #d1d5db;background:#fff}button{border:0;cursor:pointer;font-weight:600}.primary{background:#6d28d9;color:white}.outline{background:white;border:1px solid #d9cff9;color:#5b21b6}.status{padding:11px 13px;margin:11px 0 0;border-radius:11px;background:#f3f4f6;color:#374151}.ok{background:#dcfce7;color:#166534}.warn{background:#fef3c7;color:#92400e}.error{background:#fee2e2;color:#991b1b}.tiny{font-size:12px;color:#6b7280}.guide-note{line-height:1.6}.hide{display:none!important}@media(max-width:820px){body{padding:10px}.grid{grid-template-columns:1fr}.stage{width:min(100%,410px)}.head h1{font-size:19px}}
 </style>
+<style>
+/* Match the Smart Classroom's pastel-blue theme on the separately hosted camera page. */
+:root{color-scheme:light}
+body{background:#f2f9fc}
+.head{background:linear-gradient(120deg,#285b75,#4d91ad);box-shadow:0 10px 28px rgba(43,99,126,.12)}
+.primary{background:#438eae;color:#fff}
+.outline{border:1px solid #b9ddeb;color:#347c9e;background:#fff}
+.guide{border-color:#e7fbff}
+.guide:after{content:"";position:absolute;inset:-2px;border:2px solid transparent;border-radius:5px;background:linear-gradient(#8dd2e5,#8dd2e5) left top/14px 3px no-repeat,linear-gradient(#8dd2e5,#8dd2e5) left top/3px 14px no-repeat,linear-gradient(#8dd2e5,#8dd2e5) right top/14px 3px no-repeat,linear-gradient(#8dd2e5,#8dd2e5) right top/3px 14px no-repeat,linear-gradient(#8dd2e5,#8dd2e5) left bottom/14px 3px no-repeat,linear-gradient(#8dd2e5,#8dd2e5) left bottom/3px 14px no-repeat,linear-gradient(#8dd2e5,#8dd2e5) right bottom/14px 3px no-repeat,linear-gradient(#8dd2e5,#8dd2e5) right bottom/3px 14px no-repeat;pointer-events:none}
+</style>
 </head>
 <body>
 <main class="shell">
@@ -36,7 +46,7 @@ const el=id=>document.getElementById(id);
 function setStatus(id,text,type){const node=el(id);node.className='status'+(type?' '+type:'');node.textContent=text;}
 function sendToApp(message){if(window.opener&&appOrigin)window.opener.postMessage(message,appOrigin);}
 function returnToApp(){if(window.opener){window.opener.focus();}else setStatus('scanStatus','เปิดหน้านี้จาก Smart Classroom เพื่อส่งผลสแกนกลับ','warn');}
-function applyConfig(data){if(!data||!Array.isArray(data.questions)||!data.questions.length)return;examConfig={examId:String(data.examId||''),questions:data.questions,idDigits:Math.max(4,Math.min(12,Number(data.idDigits)||6))};el('examLabel').textContent=examConfig.examId+' • '+examConfig.questions.length+' ข้อ';el('configInfo').textContent='รหัสนักเรียนแบบฝน '+examConfig.idDigits+' หลัก • ผลจะส่งกลับไปยังแท็บ Smart Classroom';el('scanButton').disabled=false;setStatus('scanStatus','พร้อมอ่านคำตอบ จัดกระดาษให้มาร์กเกอร์ทั้ง 4 มุมอยู่ในกรอบ','ok');}
+function applyConfig(data){if(!data||!Array.isArray(data.questions)||!data.questions.length)return;examConfig={examId:String(data.examId||''),questions:data.questions,idDigits:Math.max(4,Math.min(13,Number(data.idDigits)||6))};el('examLabel').textContent=examConfig.examId+' • '+examConfig.questions.length+' ข้อ';el('configInfo').textContent='รหัสนักเรียนแบบฝน '+examConfig.idDigits+' หลัก • ผลจะส่งกลับไปยังแท็บ Smart Classroom';el('scanButton').disabled=false;setStatus('scanStatus','พร้อมอ่านคำตอบ จัดกระดาษให้มาร์กเกอร์ทั้ง 4 มุมอยู่ในกรอบ','ok');}
 window.addEventListener('message',event=>{
   if(event.source!==window.opener||!TRUSTED_APP_ORIGIN.test(event.origin))return;
   const data=event.data||{};
@@ -66,11 +76,14 @@ function solveHomography(markers){const target=[[.0619,.0438],[.9381,.0438],[.93
 function mapPoint(h,u,v,w,height){if(!h)return{x:u*w,y:v*height};const d=h[6]*u+h[7]*v+1;if(Math.abs(d)<1e-8)return{x:u*w,y:v*height};return{x:(h[0]*u+h[1]*v+h[2])/d,y:(h[3]*u+h[4]*v+h[5])/d};}
 // Sample inside the circle while excluding its printed outline, then classify by pixel density.
 function bubbleDensity(image,p,threshold){const w=image.width,h=image.height,cx=p.x,cy=p.y,rx=Math.max(2,w*.0052),ry=Math.max(2,h*.0040),d=image.data;let dark=0,total=0;for(let y=Math.max(0,Math.floor(cy-ry));y<=Math.min(h-1,Math.ceil(cy+ry));y++)for(let x=Math.max(0,Math.floor(cx-rx));x<=Math.min(w-1,Math.ceil(cx+rx));x++){const dx=(x-cx)/rx,dy=(y-cy)/ry;if(dx*dx+dy*dy>1)continue;total++;if(gray(d,w,x,y)<threshold)dark++;}return total?dark/total:0;}
-function chooseMark(values){const sorted=values.map((density,index)=>({density,index})).sort((a,b)=>b.density-a.density),top=sorted[0]||{density:0,index:-1},second=sorted[1]||{density:0,index:-1};if(top.density<.2)return{answer:'',status:'blank'};if(second.density>=.2&&second.density>=top.density*.72)return{answer:'',status:'multiple'};if(top.density-second.density<.07)return{answer:'',status:'uncertain'};return{answer:CHOICES[top.index],status:'marked'};}
+function classifyDensity(values){const sorted=values.map((density,index)=>({density,index})).sort((a,b)=>b.density-a.density),top=sorted[0]||{density:0,index:-1},second=sorted[1]||{density:0,index:-1};if(top.density<.2)return{index:-1,status:'blank'};if(second.density>=.2&&second.density>=top.density*.72)return{index:-1,status:'multiple'};if(top.density-second.density<.07)return{index:-1,status:'uncertain'};return{index:top.index,status:'marked'};}
+function chooseMark(values){const mark=classifyDensity(values);return{answer:mark.status==='marked'?(CHOICES[mark.index]||''):'',status:mark.status};}
+// Student IDs use ten bubbles (0-9), so read their winning index directly.
+function chooseDigit(values){return classifyDensity(values);}
 function answerLayout(count){const cols=Math.min(4,Math.max(1,Math.ceil(count/25))),rows=Math.ceil(count/cols);return{cols:cols,rows:rows,startY:.34,endY:.92,colStart:.055,colWidth:.89/cols,optionX:[.36,.52,.68,.84]};}
 function questionPoint(number,count,choice,w,h,homography){const layout=answerLayout(count),zero=number-1,col=Math.floor(zero/layout.rows),row=zero%layout.rows,y=layout.rows===1?layout.startY:layout.startY+(layout.endY-layout.startY)*row/(layout.rows-1),x=layout.colStart+col*layout.colWidth+layout.optionX[choice]*layout.colWidth;return mapPoint(homography,x,y,w,h);}
-function idPoint(column,digit,digits,w,h,homography){return mapPoint(homography,.23+(column+.5)*(.70/digits),.168+digit*.012,w,h);}
-function readId(image,threshold,homography,digits){let code='';for(let column=0;column<digits;column++){const densities=Array.from({length:10},(_,digit)=>bubbleDensity(image,idPoint(column,digit,digits,image.width,image.height,homography),threshold)),mark=chooseMark(densities);if(mark.status!=='marked')return'';code+=String(CHOICES.indexOf(mark.answer));}return code;}
+function idPoint(column,digit,digits,w,h,homography){return mapPoint(homography,.23+(column+.5)*(.70/digits),.185+digit*.012,w,h);}
+function readId(image,threshold,homography,digits){let code='';for(let column=0;column<digits;column++){const densities=Array.from({length:10},(_,digit)=>bubbleDensity(image,idPoint(column,digit,digits,image.width,image.height,homography),threshold)),mark=chooseDigit(densities);if(mark.status!=='marked')return'';code+=String(mark.index);}return code;}
 function escapeHtml(value){return String(value||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 async function scanSheet(){
   const video=el('video'),stage=document.querySelector('.stage');if(!stream||video.readyState<2)return setStatus('scanStatus','เปิดกล้องก่อนสแกน','warn');if(!examConfig)return setStatus('scanStatus','ยังไม่ได้รับชุดข้อสอบจาก Smart Classroom','error');
