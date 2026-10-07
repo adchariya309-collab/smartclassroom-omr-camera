@@ -51,7 +51,11 @@ body{background:#f3faff}
 <script>
 'use strict';
 const CHOICES=['ก','ข','ค','ง'];
-const TRUSTED_APP_ORIGIN=/^https:\/\/(script\.google\.com|([a-z0-9-]+\.)*script\.googleusercontent\.com)$/i;
+// Apps Script HTML Service uses a dynamic host such as
+// n-xxxx-0lu-script.googleusercontent.com (note the hyphen before "script").
+// Allow that host as well as the normal script.google.com origin so the
+// startup configuration and scan results can travel between the two apps.
+const TRUSTED_APP_ORIGIN=/^https:\/\/(?:script\.google\.com|script\.googleusercontent\.com|[a-z0-9-]+-script\.googleusercontent\.com|(?:[a-z0-9-]+\.)+script\.googleusercontent\.com)$/i;
 let appOrigin='',examConfig=null,stream=null,cameras=[],cameraEpoch=0,readyTimer=null,autoScanTimer=null,autoScanBusy=false,autoStableSignature='',autoStableCount=0;
 const el=id=>document.getElementById(id);
 function setStatus(id,text,type){const node=el(id);node.className='status'+(type?' '+type:'');node.textContent=text;}
