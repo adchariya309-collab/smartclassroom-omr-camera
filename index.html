@@ -66,8 +66,19 @@ window.addEventListener('message',event=>{
   if(data.type==='OMR_CONFIG'){appOrigin=event.origin;applyConfig(data);}
   if(data.type==='OMR_STOP')stopCamera();
 });
+// If iPhone Safari delays or drops the first postMessage, the fragment supplies
+// non-secret exam metadata so the camera can start scanning while retries continue.
+function bootstrapConfigFromHash_(){
+  try{
+    const encoded=new URLSearchParams(location.hash.slice(1)).get('omr');if(!encoded)return false;
+    const bootstrap=JSON.parse(encoded),count=Number(bootstrap.questionCount),origin=String(bootstrap.appOrigin||'');
+    if(!bootstrap.examId||!Number.isInteger(count)||count<1||count>100||!TRUSTED_APP_ORIGIN.test(origin))return false;
+    appOrigin=origin;applyConfig({examId:String(bootstrap.examId),questions:Array.from({length:count},(_,i)=>({questionNumber:i+1})),idDigits:5});return true;
+  }catch(error){setStatus('scanStatus','ข้อมูลเริ่มต้นกล้องไม่ถูกต้อง • กลับไปเปิดกล้องใหม่จาก Smart Classroom','error');return false;}
+}
+const hasBootstrapConfig=bootstrapConfigFromHash_();
 if(appWindow_()){announceAppReady_();readyTimer=setInterval(()=>{if(!examConfig)announceAppReady_();else{clearInterval(readyTimer);readyTimer=null;}},1200);}
-else setStatus('scanStatus','หน้านี้ต้องเปิดจาก Smart Classroom เพื่อเชื่อมต่อชุดข้อสอบ','warn');
+else if(!hasBootstrapConfig)setStatus('scanStatus','หน้านี้ต้องเปิดจาก Smart Classroom เพื่อเชื่อมต่อชุดข้อสอบ','warn');
 async function startCamera(deviceId){
   stopAutoScanLoop();const epoch=++cameraEpoch,previous=stream;stream=null;if(previous)previous.getTracks().forEach(track=>{try{track.stop();}catch(_){}});const previousVideo=el('video');try{previousVideo.pause();}catch(_){}previousVideo.srcObject=null;
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){setStatus('cameraStatus','เบราว์เซอร์ไม่รองรับกล้อง หรือหน้าไม่ได้เปิดผ่าน HTTPS','error');return;}
@@ -83,8 +94,10 @@ function gray(data,width,x,y){const i=(Math.floor(y)*width+Math.floor(x))*4;retu
 // Estimate paper brightness from sampled pixels and use it to set a dark-pixel threshold.
 function findThreshold(image){const d=image.data,values=[];for(let y=4;y<image.height;y+=Math.max(8,Math.round(image.height/55)))for(let x=4;x<image.width;x+=Math.max(8,Math.round(image.width/55)))values.push(gray(d,image.width,x,y));values.sort((a,b)=>a-b);return Math.max(118,Math.min(188,(values[Math.floor(values.length*.9)]||235)*.68));}
 function markerScore(image,cx,cy,threshold){const d=image.data,w=image.width,h=image.height,rx=Math.max(3,w*.0055),ry=Math.max(3,h*.0045);let dark=0,total=0;for(let y=Math.max(0,Math.floor(cy-ry));y<=Math.min(h-1,Math.ceil(cy+ry));y+=Math.max(1,Math.floor(ry/3)))for(let x=Math.max(0,Math.floor(cx-rx));x<=Math.min(w-1,Math.ceil(cx+rx));x+=Math.max(1,Math.floor(rx/3))){total++;if(gray(d,w,x,y)<threshold)dark++;}return total?dark/total:0;}
-// Locate the four solid corner marks. Wider search windows allow a few degrees of page tilt.
-function findMarkers(image,threshold){const w=image.width,h=image.height,targets=[[.0619,.0438],[.9381,.0438],[.9381,.9562],[.0619,.9562]],out=[],step=Math.max(1,Math.round(w/430));targets.forEach(([u,v])=>{const ex=u*w,ey=v*h,sx=Math.round(w*.12),sy=Math.round(h*.09);let best={x:ex,y:ey,score:0};for(let y=Math.max(1,ey-sy);y<=Math.min(h-2,ey+sy);y+=step)for(let x=Math.max(1,ex-sx);x<=Math.min(w-2,ex+sx);x+=step){const score=markerScore(image,x,y,threshold);if(score>best.score)best={x:x,y:y,score:score};}out.push(best);});return out;}
+// Locate markers in the cropped camera guide. The printed sheet coordinates are
+// remapped into the 4%-inset crop before searching; the homography below still
+// maps each detected point back to its original sheet coordinate.
+function findMarkers(image,threshold){const w=image.width,h=image.height,inset=.04,span=.92,targets=[[.0619,.0438],[.9381,.0438],[.9381,.9562],[.0619,.9562]].map(([u,v])=>[(u-inset)/span,(v-inset)/span]),out=[],step=Math.max(1,Math.round(w/430));targets.forEach(([u,v])=>{const ex=u*w,ey=v*h,sx=Math.round(w*.10),sy=Math.round(h*.08);let best={x:ex,y:ey,score:0};for(let y=Math.max(1,ey-sy);y<=Math.min(h-2,ey+sy);y+=step)for(let x=Math.max(1,ex-sx);x<=Math.min(w-2,ex+sx);x+=step){const score=markerScore(image,x,y,threshold);if(score>best.score)best={x:x,y:y,score:score};}out.push(best);});return out;}
 // Fit a projective transform so perspective and mild camera skew do not shift the bubble samples.
 function solveHomography(markers){const target=[[.0619,.0438],[.9381,.0438],[.9381,.9562],[.0619,.9562]],m=[];target.forEach((p,i)=>{const u=p[0],v=p[1],x=markers[i].x,y=markers[i].y;m.push([u,v,1,0,0,0,-u*x,-v*x,x]);m.push([0,0,0,u,v,1,-u*y,-v*y,y]);});for(let c=0;c<8;c++){let pivot=c;for(let r=c+1;r<8;r++)if(Math.abs(m[r][c])>Math.abs(m[pivot][c]))pivot=r;if(Math.abs(m[pivot][c])<1e-9)return null;[m[c],m[pivot]]=[m[pivot],m[c]];const d=m[c][c];for(let j=c;j<9;j++)m[c][j]/=d;for(let r=0;r<8;r++)if(r!==c){const f=m[r][c];for(let j=c;j<9;j++)m[r][j]-=f*m[c][j];}}return m.map(row=>row[8]);}
 function mapPoint(h,u,v,w,height){if(!h)return{x:u*w,y:v*height};const d=h[6]*u+h[7]*v+1;if(Math.abs(d)<1e-8)return{x:u*w,y:v*height};return{x:(h[0]*u+h[1]*v+h[2])/d,y:(h[3]*u+h[4]*v+h[5])/d};}
