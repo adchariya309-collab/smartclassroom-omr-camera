@@ -29,13 +29,14 @@ body{background:#f3faff}
 <style>
 *,*:before,*:after,html,body,button,input,select,textarea,table,th,td,label,span,div,p,h1,h2,h3,h4,h5,h6,a{font-family:"Mitr",sans-serif!important}
 </style>
+<style id="omr-marker-styles">.stage .marker-indicator{position:absolute;z-index:8;width:34px;height:34px;transform:translate(-50%,-50%);border:3px solid rgba(255,255,255,.82);border-radius:7px;background:rgba(255,255,255,.08);box-shadow:0 1px 8px #0008;pointer-events:none;transition:border-color .12s,background .12s,box-shadow .12s}.stage .marker-indicator.found{border-color:#13c957;background:rgba(19,201,87,.17);box-shadow:0 0 0 2px rgba(19,201,87,.48),0 0 20px rgba(19,201,87,.8)}@media(max-width:520px){.stage .marker-indicator{width:30px;height:30px;border-width:3px}}</style>
 </head>
 <body>
 <main class="shell">
   <header class="head"><h1>Smart Classroom • สแกนกระดาษคำตอบ OMR</h1><p>เชื่อมกับ Smart Classroom เพื่อรับเฉลยและส่งผลตรวจกลับ</p></header>
   <section class="grid">
     <article class="panel">
-      <div class="stage"><video id="video" autoplay muted playsinline></video><div class="guide"></div></div>
+      <div class="stage"><video id="video" autoplay muted playsinline></video><div class="guide"></div><div id="marker-tl" class="marker-indicator" data-left="6%" data-top="5%" style="left:6%;top:5%" aria-label="มาร์กเกอร์มุมซ้ายบน"></div><div id="marker-tr" class="marker-indicator" data-left="94%" data-top="5%" style="left:94%;top:5%" aria-label="มาร์กเกอร์มุมขวาบน"></div><div id="marker-br" class="marker-indicator" data-left="94%" data-top="95%" style="left:94%;top:95%" aria-label="มาร์กเกอร์มุมขวาล่าง"></div><div id="marker-bl" class="marker-indicator" data-left="6%" data-top="95%" style="left:6%;top:95%" aria-label="มาร์กเกอร์มุมซ้ายล่าง"></div></div>
       <div class="controls"><select id="cameraSelect" class="select" aria-label="เลือกกล้อง"><option value="">กล้องหลัง / กล้องเริ่มต้น</option></select><button class="primary" onclick="startCamera()">เปิดกล้อง</button><button class="outline" onclick="stopCamera()">ปิดกล้อง</button></div>
       <p id="cameraStatus" class="status">กดเปิดกล้อง แล้วจัดกระดาษ A4 ให้เต็มกรอบ</p>
       <p class="tiny guide-note">ใช้กระดาษพิมพ์ขนาดจริง 100% ให้เห็นมาร์กเกอร์ดำทั้งสี่มุม ระบายวงกลมให้ทึบ ใช้แสงสว่างสม่ำเสมอและหลีกเลี่ยงเงาสะท้อน</p>
@@ -56,7 +57,7 @@ const CHOICES=['ก','ข','ค','ง'];
 // Allow that host as well as the normal script.google.com origin so the
 // startup configuration and scan results can travel between the two apps.
 const TRUSTED_APP_ORIGIN=/^https:\/\/(?:script\.google\.com|script\.googleusercontent\.com|[a-z0-9-]+-script\.googleusercontent\.com|(?:[a-z0-9-]+\.)+script\.googleusercontent\.com)$/i;
-let appOrigin='',examConfig=null,stream=null,cameras=[],cameraEpoch=0,readyTimer=null,autoScanTimer=null,autoScanBusy=false,autoStableSignature='',autoStableCount=0;
+let appOrigin='',examConfig=null,stream=null,cameras=[],cameraEpoch=0,readyTimer=null,autoScanTimer=null,autoScanBusy=false,autoStableSignature='',autoStableCount=0,waitingForNextSheet=false,sheetGoneCount=0;
 const el=id=>document.getElementById(id);
 function setStatus(id,text,type){const node=el(id);node.className='status'+(type?' '+type:'');node.textContent=text;}
 function appWindow_(){return window.parent!==window?window.parent:window.opener;}
@@ -68,7 +69,7 @@ window.addEventListener('message',event=>{
   if(event.source!==appWindow_()||!TRUSTED_APP_ORIGIN.test(event.origin))return;
   const data=event.data||{};
   if(data.type==='OMR_CONFIG'){appOrigin=event.origin;applyConfig(data);}
-  if(data.type==='OMR_STOP')stopCamera();
+  if(data.type==='OMR_STOP')stopCamera();if(data.type==='OMR_CONTINUE_SCAN'){waitingForNextSheet=true;sheetGoneCount=0;autoStableSignature='';autoStableCount=0;if(stream&&examConfig){startAutoScanLoop();setStatus('scanStatus','คะแนนบันทึกแล้ว • ยกกระดาษใบเดิมออกจากกรอบ แล้วรอข้อความพร้อมรับใบถัดไป','ok');}}
 });
 // The URL carries only the exam ID and question count, never the answer key.
 // Read both query and fragment because mobile browsers/host redirects can drop either one.
@@ -91,7 +92,7 @@ async function startCamera(deviceId){
 }
 el('cameraSelect').addEventListener('change',event=>startCamera(event.target.value));
 function stopAutoScanLoop(){if(autoScanTimer){clearInterval(autoScanTimer);autoScanTimer=null;}autoScanBusy=false;autoStableSignature='';autoStableCount=0;}
-function startAutoScanLoop(){if(autoScanTimer||!stream||!examConfig)return;autoStableSignature='';autoStableCount=0;setStatus('scanStatus','วางกระดาษให้อยู่ในกรอบ • ระบบอ่านอัตโนมัติเมื่อพบมาร์กเกอร์ครบและมีคำตอบอย่างน้อย 1 ข้อ • รหัสอ่านไม่ได้ก็สแกนได้','ok');autoScanTimer=setInterval(()=>{if(!autoScanBusy){autoScanBusy=true;scanSheet(true).finally(()=>{autoScanBusy=false;});}},1100);}
+function startAutoScanLoop(){if(autoScanTimer||!stream||!examConfig)return;autoStableSignature='';autoStableCount=0;setStatus('scanStatus',waitingForNextSheet?'นำกระดาษใบเดิมออกจากกรอบ เพื่อเตรียมรับใบถัดไป':'วางกระดาษให้อยู่ในกรอบ • ระบบอ่านอัตโนมัติเมื่อพบมาร์กเกอร์ครบและมีคำตอบอย่างน้อย 1 ข้อ • รหัสอ่านไม่ได้ก็สแกนได้','ok');autoScanTimer=setInterval(()=>{if(!autoScanBusy){autoScanBusy=true;scanSheet(true).finally(()=>{autoScanBusy=false;});}},1100);}
 function stopCamera(){stopAutoScanLoop();cameraEpoch++;const active=stream;stream=null;if(active)active.getTracks().forEach(track=>{try{track.stop();}catch(_){}});const video=el('video');try{video.pause();}catch(_){}video.srcObject=null;setStatus('cameraStatus','ปิดกล้องแล้ว');sendToApp({type:'OMR_STATUS',message:'ปิดกล้องแล้ว',status:''});}
 // Capture the whole visible preview. Cropping to the dashed guide clips the
 // printed corner markers, which sit only a few millimetres inside the paper edge.
@@ -104,6 +105,7 @@ function markerScore(image,cx,cy,side,threshold){const w=image.width,h=image.hei
 // The broad corner windows tolerate paper size, translation, and camera skew.
 function findCornerMarker(image,corner,threshold){const w=image.width,h=image.height,regions={tl:[.015,.30,.015,.23],tr:[.70,.985,.015,.23],br:[.70,.985,.77,.985],bl:[.015,.30,.77,.985]},r=regions[corner],x0=Math.floor(w*r[0]),x1=Math.ceil(w*r[1]),y0=Math.floor(h*r[2]),y1=Math.ceil(h*r[3]),step=Math.max(2,Math.round(w/95)),sizes=[.016,.022,.029,.037,.046].map(k=>Math.max(5,w*k));let best={x:(x0+x1)/2,y:(y0+y1)/2,score:0,side:sizes[2]};for(const side of sizes)for(let y=y0;y<=y1;y+=step)for(let x=x0;x<=x1;x+=step){const score=markerScore(image,x,y,side,threshold);if(score>best.score)best={x,y,score,side};}if(best.score>.25){let refined=best;for(let y=Math.max(y0,best.y-step);y<=Math.min(y1,best.y+step);y++)for(let x=Math.max(x0,best.x-step);x<=Math.min(x1,best.x+step);x++){const score=markerScore(image,x,y,best.side,threshold);if(score>refined.score)refined={x,y,score,side:best.side};}best=refined;}return best;}
 function findMarkers(image,threshold){return['tl','tr','br','bl'].map(corner=>findCornerMarker(image,corner,threshold));}
+function updateMarkerIndicators_(markers,width,height){['tl','tr','br','bl'].forEach((corner,index)=>{const node=el('marker-'+corner),marker=markers[index],found=Boolean(marker&&marker.score>=.38);if(!node)return;node.classList.toggle('found',found);node.setAttribute('aria-label','มาร์กเกอร์มุม'+({tl:'ซ้ายบน',tr:'ขวาบน',br:'ขวาล่าง',bl:'ซ้ายล่าง'}[corner])+(found?' อ่านแล้ว':' ยังไม่พบ'));if(found){node.style.left=(Math.max(0,Math.min(100,marker.x/width*100))).toFixed(2)+'%';node.style.top=(Math.max(0,Math.min(100,marker.y/height*100))).toFixed(2)+'%';}else{node.style.left=node.dataset.left;node.style.top=node.dataset.top;}});}
 // Fit a projective transform so perspective and mild camera skew do not shift the bubble samples.
 function solveHomography(markers){const target=[[.0619,.0438],[.9381,.0438],[.9381,.9562],[.0619,.9562]],m=[];target.forEach((p,i)=>{const u=p[0],v=p[1],x=markers[i].x,y=markers[i].y;m.push([u,v,1,0,0,0,-u*x,-v*x,x]);m.push([0,0,0,u,v,1,-u*y,-v*y,y]);});for(let c=0;c<8;c++){let pivot=c;for(let r=c+1;r<8;r++)if(Math.abs(m[r][c])>Math.abs(m[pivot][c]))pivot=r;if(Math.abs(m[pivot][c])<1e-9)return null;[m[c],m[pivot]]=[m[pivot],m[c]];const d=m[c][c];for(let j=c;j<9;j++)m[c][j]/=d;for(let r=0;r<8;r++)if(r!==c){const f=m[r][c];for(let j=c;j<9;j++)m[r][j]-=f*m[c][j];}}return m.map(row=>row[8]);}
 function mapPoint(h,u,v,w,height){if(!h)return{x:u*w,y:v*height};const d=h[6]*u+h[7]*v+1;if(Math.abs(d)<1e-8)return{x:u*w,y:v*height};return{x:(h[0]*u+h[1]*v+h[2])/d,y:(h[3]*u+h[4]*v+h[5])/d};}
@@ -120,12 +122,12 @@ function readId(image,threshold,homography,digits){let code='';for(let column=0;
 function escapeHtml(value){return String(value||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 async function scanSheet(automatic=false){
   const video=el('video'),stage=document.querySelector('.stage');if(!stream||video.readyState<2)return setStatus('scanStatus','เปิดกล้องก่อนสแกน','warn');if(!examConfig)return setStatus('scanStatus','ยังไม่ได้รับชุดข้อสอบจาก Smart Classroom','error');
-  if(!automatic&&autoScanTimer)stopAutoScanLoop();el('scanButton').disabled=true;setStatus('scanStatus','กำลังปรับพิกัดมาร์กเกอร์และอ่านความเข้มของวงกลม...');
+  if(!automatic&&waitingForNextSheet){waitingForNextSheet=false;sheetGoneCount=0;}if(!automatic&&autoScanTimer)stopAutoScanLoop();el('scanButton').disabled=true;setStatus('scanStatus','กำลังปรับพิกัดมาร์กเกอร์และอ่านความเข้มของวงกลม...');
   try{
     // Map the overlay crop to the camera's native resolution, accounting for object-fit: cover.
     const crop=stageCrop(video,stage),sx=Math.max(0,Math.floor(crop.x)),sy=Math.max(0,Math.floor(crop.y)),sw=Math.min(video.videoWidth-sx,Math.ceil(crop.w)),sh=Math.min(video.videoHeight-sy,Math.ceil(crop.h));if(sw<100||sh<100)throw new Error('กระดาษอยู่นอกกรอบกล้อง');
-    const canvas=document.createElement('canvas');canvas.width=sw;canvas.height=sh;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(video,sx,sy,sw,sh,0,0,sw,sh);const image=ctx.getImageData(0,0,sw,sh),threshold=findThreshold(image),markers=findMarkers(image,threshold),markerCount=markers.filter(m=>m.score>=.38).length,homography=markerCount===4?solveHomography(markers):null;
-    if(markerCount!==4||!homography){if(automatic){autoStableSignature='';autoStableCount=0;}setStatus('scanStatus',`ยังจัดแนวกระดาษไม่ได้ • พบมาร์กเกอร์ ${markerCount}/4 • ให้เห็นสี่เหลี่ยมดำครบ 4 มุมและขยับกระดาษให้ใหญ่ขึ้น`,'warn');return;}
+    const canvas=document.createElement('canvas');canvas.width=sw;canvas.height=sh;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(video,sx,sy,sw,sh,0,0,sw,sh);const image=ctx.getImageData(0,0,sw,sh),threshold=findThreshold(image),markers=findMarkers(image,threshold),markerCount=markers.filter(m=>m.score>=.38).length,homography=markerCount===4?solveHomography(markers):null;updateMarkerIndicators_(markers,sw,sh);
+    if(automatic&&waitingForNextSheet){if(markerCount===0)sheetGoneCount++;else sheetGoneCount=0;if(sheetGoneCount<2){setStatus('scanStatus','นำกระดาษใบเดิมออกจากกรอบ • กำลังตรวจว่ากล้องโล่งแล้ว','warn');return;}waitingForNextSheet=false;sheetGoneCount=0;autoStableSignature='';autoStableCount=0;setStatus('scanStatus','พร้อมรับกระดาษคำตอบใบถัดไป • วางกระดาษให้เห็นมาร์กเกอร์ครบ 4 มุม','ok');return;}if(markerCount!==4||!homography){if(automatic){autoStableSignature='';autoStableCount=0;}setStatus('scanStatus',`ยังจัดแนวกระดาษไม่ได้ • พบมาร์กเกอร์ ${markerCount}/4 • ให้เห็นสี่เหลี่ยมดำครบ 4 มุมและขยับกระดาษให้ใหญ่ขึ้น`,'warn');return;}
     const answers=examConfig.questions.map((q,i)=>{const densities=CHOICES.map((_,choice)=>bubbleDensity(image,questionPoint(i+1,examConfig.questions.length,choice,sw,sh,homography),threshold,true)),mark=chooseMark(densities);return{questionNumber:i+1,answer:mark.answer,markStatus:mark.status,densities:densities.map(x=>Math.round(x*1000)/1000)};});
     const code=readId(image,threshold,homography,examConfig.idDigits),payload={examId:examConfig.examId,recognizedStudentCode:code,answers:answers,markerCount:markerCount,imageThreshold:Math.round(threshold)};
     const markedCount=answers.filter(a=>a.markStatus==='marked').length,blankCount=answers.filter(a=>a.markStatus==='blank').length,reviewCount=answers.filter(a=>a.markStatus==='multiple'||a.markStatus==='uncertain').length;
